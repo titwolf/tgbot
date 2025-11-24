@@ -29,58 +29,34 @@ class Program
         var me = await bot.GetMeAsync();
         Console.WriteLine($"Бот запущен: {me.Username}");
 
-        // --------- Эта строка держит бота активным 24/7 ---------
+        // Держим бота активным 24/7
         await Task.Delay(-1, cts.Token);
     }
 
-    // ---------------------------------
     // Основная логика обработки сообщений
-    // ---------------------------------
     static async Task HandleUpdateAsync(ITelegramBotClient bot, Update update, CancellationToken token)
     {
         if (update.Type == UpdateType.Message && update.Message!.Text != null)
         {
             var msg = update.Message;
+            var text = msg.Text;
 
-            if (msg.Text == "/start")
+            switch (text)
             {
-                await SendStartMenu(bot, msg.Chat.Id);
-                return;
-            }
-
-            // Реакция на кнопку "Открыть приложение"
-            if (msg.Text == "Открыть приложение")
-            {
-                // Кнопка сама откроет WebApp, здесь можно ничего не делать
-                return;
-            }
-        }
-
-        // Обработка команд меню (support, channel, faq)
-        if (update.Type == UpdateType.CallbackQuery)
-        {
-            var callback = update.CallbackQuery;
-            var chatId = callback.Message.Chat.Id;
-
-            switch (callback.Data)
-            {
-                case "support":
-                    await bot.SendTextMessageAsync(
-                        chatId,
-                        "Открываю чат с поддержкой: https://t.me/fapSupport"
-                    );
+                case "/start":
+                    await SendStartMenu(bot, msg.Chat.Id);
                     break;
 
-                case "channel":
-                    await bot.SendTextMessageAsync(
-                        chatId,
-                        "Канал разработчика: https://t.me/fitappplan"
-                    );
+                case "/support":
+                    await bot.SendTextMessageAsync(msg.Chat.Id, "Чат поддержки: @fapSupport");
                     break;
 
-                case "faq":
-                    await bot.SendTextMessageAsync(
-                        chatId,
+                case "/channel":
+                    await bot.SendTextMessageAsync(msg.Chat.Id, "Канал разработчика: https://t.me/fitappplan");
+                    break;
+
+                case "/faq":
+                    await bot.SendTextMessageAsync(msg.Chat.Id,
                         "Это приложение предназначено для создания и отслеживания ваших тренировок.\n\n" +
                         "Вы можете:\n" +
                         "- Создавать новые тренировки\n" +
@@ -90,45 +66,42 @@ class Program
                         "Приложение полностью бесплатное и удобно для планирования ваших тренировок."
                     );
                     break;
-            }
 
-            await bot.AnswerCallbackQueryAsync(callback.Id);
+                case "Открыть приложение":
+                    // Ничего не делаем, кнопка сама откроет WebApp
+                    break;
+            }
         }
     }
 
-    // --------------------------------------------
-    // Главное меню: WebApp-кнопка + Telegram Menu
-    // --------------------------------------------
+    // Главное меню
     static async Task SendStartMenu(ITelegramBotClient bot, long chatId)
     {
+        // Кнопки команд под полем ввода
         var keyboard = new ReplyKeyboardMarkup(new[]
         {
-            new KeyboardButton[]
-            {
-                new KeyboardButton("Открыть приложение")
-                {
-                    WebApp = new WebAppInfo
-                    {
-                        Url = "https://titwolf.github.io/webapp/"
-                    }
-                }
-            }
+            new KeyboardButton[] { new KeyboardButton("/support") },
+            new KeyboardButton[] { new KeyboardButton("/channel") },
+            new KeyboardButton[] { new KeyboardButton("/faq") }
         })
         {
             ResizeKeyboard = true,
             IsPersistent = true
         };
 
+        // Меню ⋮ — кнопка для открытия WebApp
         await bot.SetMyCommandsAsync(new[]
         {
-            new BotCommand { Command = "support", Description = "Поддержка" },
-            new BotCommand { Command = "channel", Description = "Канал разработчика" },
-            new BotCommand { Command = "faq", Description = "FAQ" }
+            new BotCommand
+            {
+                Command = "openapp",
+                Description = "Открыть приложение"
+            }
         });
 
         await bot.SendTextMessageAsync(
             chatId,
-            "Добро пожаловать! Открывай приложение кнопкой ниже.",
+            "Добро пожаловать! Используй команды ниже или открой приложение через меню ⋮.",
             replyMarkup: keyboard
         );
     }
