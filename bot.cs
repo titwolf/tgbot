@@ -3,6 +3,8 @@ using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
+using System.Threading;
+using System.Threading.Tasks;
 
 class Program
 {
@@ -26,8 +28,9 @@ class Program
 
         var me = await bot.GetMeAsync();
         Console.WriteLine($"Бот запущен: {me.Username}");
-        Console.ReadLine();
-        cts.Cancel();
+
+        // --------- Эта строка держит бота активным 24/7 ---------
+        await Task.Delay(-1, cts.Token);
     }
 
     // ---------------------------------
@@ -98,7 +101,6 @@ class Program
     // --------------------------------------------
     static async Task SendStartMenu(ITelegramBotClient bot, long chatId)
     {
-        // Кнопка WebApp под полем ввода
         var keyboard = new ReplyKeyboardMarkup(new[]
         {
             new KeyboardButton[]
@@ -117,7 +119,6 @@ class Program
             IsPersistent = true
         };
 
-        // Меню Telegram (⋮) — команды бота
         await bot.SetMyCommandsAsync(new[]
         {
             new BotCommand { Command = "support", Description = "Поддержка" },
