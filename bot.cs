@@ -1,124 +1,113 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.DependencyInjection;
 using Telegram.Bot;
+using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
-using Telegram.Bot.Types.ReplyMarkups;
 using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.ReplyMarkups;
 
-var builder = WebApplication.CreateBuilder(args);
-
-// переменные окружения для Render
-string botToken = Environment.GetEnvironmentVariable("8206787948:AAFdOkk9Shgc-WfL8Vv9SDu7MOr0gNB7zN0");
-string appUrl = Environment.GetEnvironmentVariable("https://titwolf.github.io/webapp/");
-
-var botClient = new TelegramBotClient(botToken);
-
-builder.Services.AddSingleton(botClient);
-
-var app = builder.Build();
-
-app.MapPost($"/bot{botToken}", async (Update update, ITelegramBotClient botClient) =>
+class Program
 {
-    try
+    static async Task Main()
+    {
+        var bot = new TelegramBotClient("8206787948:AAFdOkk9Shgc-WfL8Vv9SDu7MOr0gNB7zN0");
+
+        Console.WriteLine("Запуск long polling...");
+        var me = await bot.GetMeAsync();
+        Console.WriteLine($"Бот запущен: @{me.Username}");
+
+        using CancellationTokenSource cts = new();
+
+        var receiverOptions = new ReceiverOptions
+        {
+            AllowedUpdates = Array.Empty<UpdateType>()
+        };
+
+        bot.StartReceiving(
+            HandleUpdateAsync,
+            HandleErrorAsync,
+            receiverOptions,
+            cts.Token
+        );
+
+        // Держим процесс активным на Render
+        await Task.Delay(-1);
+    }
+
+    static async Task HandleUpdateAsync(ITelegramBotClient bot, Update update, CancellationToken token)
     {
         if (update.Type == UpdateType.Message && update.Message!.Text != null)
         {
-            await HandleMessage(update.Message, botClient);
-        }
-        else if (update.Type == UpdateType.CallbackQuery)
-        {
-            await botClient.AnswerCallbackQueryAsync(update.CallbackQuery.Id);
-        }
-    }
-    catch
-    {
-        // ignore
-    }
+            var msg = update.Message;
+            var text = msg.Text;
 
-    return Results.Ok();
-});
-
-// --- Установка Webhook ---
-app.Lifetime.ApplicationStarted.Register(async () =>
-{
-    await botClient.SetWebhook($"{appUrl}/bot{botToken}");
-});
-
-app.Run();
-
-// ------------------ HANDLERS -------------------
-
-async Task HandleMessage(Message msg, ITelegramBotClient bot)
-{
-    var chatId = msg.Chat.Id;
-
-    // Кнопка мини-приложения (вместо кнопки меню)
-    ReplyKeyboardMarkup menuButton = new(new[]
-    {
-        new KeyboardButton[]
-        {
-            new KeyboardButton("Открыть приложение")
+            if (text == "/start")
             {
-                WebApp = new WebAppInfo()
-                {
-                    Url = "https://твоя-ссылка-на-приложение" // <-- ВСТАВЬ СЮДА URL твоего мини-приложения
-                }
+                await SendStartMenu(bot, msg.Chat.Id);
+                return;
+            }
+
+            if (text == "FAQ")
+            {
+                await bot.SendTextMessageAsync(
+                    msg.Chat.Id,
+                    "Это приложение предназначено для создания и отслеживания ваших тренировок.\n\n" +
+                    "Вы можете:\n" +
+                    "- Создавать тренировки\n" +
+                    "- Вести учёт дней занятий\n" +
+                    "- Просматривать свои тренировки\n" +
+                    "- Использовать удобный WebApp прямо в Telegram"
+                );
+                return;
+            }
+
+            if (text == "Поддержка")
+            {
+                await bot.SendTextMessageAsync(msg.Chat.Id, "Чат поддержки: @fapSupport");
+                return;
+            }
+
+            if (text == "Канал")
+            {
+                await bot.SendTextMessageAsync(msg.Chat.Id, "Канал новостей: https://t.me/fitappplan");
+                return;
             }
         }
-    })
-    {
-        ResizeKeyboard = true,
-        OneTimeKeyboard = false,
-    };
-
-    // Кнопки под строкой ввода
-    var bottomButtons = new ReplyKeyboardMarkup(new[]
-    {
-        new KeyboardButton[] { "FAQ", "Поддержка", "Канал" }
-    })
-    {
-        ResizeKeyboard = true
-    };
-
-    string text = msg.Text.ToLower();
-
-    if (text == "/start")
-    {
-        await bot.SendMessage(chatId,
-            "Добро пожаловать! Открой мини-приложение или выбери кнопку ниже:",
-            replyMarkup: menuButton);
-
-        await bot.SendMessage(chatId,
-            "Дополнительные кнопки:",
-            replyMarkup: bottomButtons);
-        return;
     }
 
-    switch (text)
+    static async Task SendStartMenu(ITelegramBotClient bot, long chatId)
     {
-        case "faq":
-            await bot.SendMessage(chatId,
-                "📌 *FitPlan — это приложение для составления и ведения тренировки.*\n\n" +
-                "Ты можешь:\n" +
-                "• Создавать свои тренировки\n" +
-                "• Вести учёт занятий\n" +
-                "• Следить за прогрессом\n" +
-                "• Всё бесплатно и просто",
-                parseMode: ParseMode.Markdown);
-            break;
+        // Кнопки под строкой ввода
+        var replyKeyboard = new ReplyKeyboardMarkup(new[]
+        {
+            new KeyboardButton[] { "FAQ" },
+            new KeyboardButton[] { "Поддержка" },
+            new KeyboardButton[] { "Канал" }
+        })
+        {
+            ResizeKeyboard = true,
+            IsPersistent = true
+        };
 
-        case "поддержка":
-            await bot.SendMessage(chatId, "Чат поддержки: @fapSupport");
-            break;
+        // Кнопка слева — WebApp на весь экран
+        var webAppUrl = "https://titwolf.github.io/webapp/";
+        await bot.SetChatMenuButtonAsync(
+            chatId: chatId,
+            menuButton: new MenuButtonWebApp
+            {
+                Text = "Открыть приложение",
+                WebApp = new WebAppInfo { Url = webAppUrl }
+            }
+        );
 
-        case "канал":
-            await bot.SendMessage(chatId, "Канал новостей: https://t.me/fitappplan");
-            break;
+        await bot.SendTextMessageAsync(
+            chatId,
+            "Добро пожаловать!\nВыберите действие ниже или откройте приложение через кнопку слева.",
+            replyMarkup: replyKeyboard
+        );
+    }
 
-        default:
-            await bot.SendMessage(chatId, "Выберите кнопку на панели снизу.");
-            break;
+    static Task HandleErrorAsync(ITelegramBotClient bot, Exception ex, CancellationToken token)
+    {
+        Console.WriteLine($"Ошибка: {ex.Message}");
+        return Task.CompletedTask;
     }
 }
