@@ -14,13 +14,10 @@ RUN dotnet publish -c Release -o /app --self-contained true -r linux-x64
 FROM debian:12-slim AS runtime
 WORKDIR /app
 
-# Копируем готовое приложение из сборки
 COPY --from=build /app ./
 
-# Устанавливаем необходимые библиотеки
 RUN apt-get update && \
-    apt-get install -y libicu70 libssl3 libgdiplus && \
+    apt-get install -y libicu72 libssl3 libgdiplus && \
     rm -rf /var/lib/apt/lists/*
 
-# Запуск бота
 CMD ["./BotProject"]
