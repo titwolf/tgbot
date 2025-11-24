@@ -33,7 +33,6 @@ class Program
         await Task.Delay(-1, cts.Token);
     }
 
-    // Основная логика обработки сообщений
     static async Task HandleUpdateAsync(ITelegramBotClient bot, Update update, CancellationToken token)
     {
         if (update.Type == UpdateType.Message && update.Message!.Text != null)
@@ -66,19 +65,33 @@ class Program
                         "Приложение полностью бесплатное и удобно для планирования ваших тренировок."
                     );
                     break;
-
-                case "Открыть приложение":
-                    // Ничего не делаем, кнопка сама откроет WebApp
-                    break;
             }
         }
     }
 
-    // Главное меню
     static async Task SendStartMenu(ITelegramBotClient bot, long chatId)
     {
+        // WebApp-кнопка вместо меню ⋮
+        var webAppKeyboard = new ReplyKeyboardMarkup(new[]
+        {
+            new KeyboardButton[]
+            {
+                new KeyboardButton("Открыть приложение")
+                {
+                    WebApp = new WebAppInfo
+                    {
+                        Url = "https://titwolf.github.io/webapp/"
+                    }
+                }
+            }
+        })
+        {
+            ResizeKeyboard = true,
+            IsPersistent = true
+        };
+
         // Кнопки команд под полем ввода
-        var keyboard = new ReplyKeyboardMarkup(new[]
+        var commandKeyboard = new ReplyKeyboardMarkup(new[]
         {
             new KeyboardButton[] { new KeyboardButton("/support") },
             new KeyboardButton[] { new KeyboardButton("/channel") },
@@ -89,20 +102,18 @@ class Program
             IsPersistent = true
         };
 
-        // Меню ⋮ — кнопка для открытия WebApp
-        await bot.SetMyCommandsAsync(new[]
-        {
-            new BotCommand
-            {
-                Command = "openapp",
-                Description = "Открыть приложение"
-            }
-        });
-
+        // Отправляем WebApp-кнопку первым сообщением
         await bot.SendTextMessageAsync(
             chatId,
-            "Добро пожаловать! Используй команды ниже или открой приложение через меню ⋮.",
-            replyMarkup: keyboard
+            "Нажми кнопку ниже, чтобы открыть приложение:",
+            replyMarkup: webAppKeyboard
+        );
+
+        // Отправляем кнопки команд отдельным сообщением
+        await bot.SendTextMessageAsync(
+            chatId,
+            "Команды для взаимодействия с ботом:",
+            replyMarkup: commandKeyboard
         );
     }
 
