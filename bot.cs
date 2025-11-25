@@ -1,85 +1,86 @@
 #nullable enable
-using System;
-using System.Threading.Tasks;
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using Telegram.Bot;
 using Telegram.Bot.Types;
-using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Получаем токен из переменной окружения
-string? token = Environment.GetEnvironmentVariable("BOT_TOKEN");
-if (string.IsNullOrEmpty(token))
-{
-    Console.WriteLine("BOT_TOKEN не найден");
-    return;
-}
-
-var bot = new TelegramBotClient(token);
-
-builder.Services.AddSingleton(bot);
-builder.Services.AddControllers().AddNewtonsoftJson();
+// Создаём TelegramClient через DI
+builder.Services.AddSingleton(new TelegramBotClient(
+    Environment.GetEnvironmentVariable("BOT_TOKEN") ?? ""));
 
 var app = builder.Build();
 
-string webhookUrl = $"{Environment.GetEnvironmentVariable("RENDER_EXTERNAL_URL")}/bot-webhook";
-
-await bot.DeleteWebhookAsync();
-await bot.SetWebhookAsync(webhookUrl);
-
-Console.WriteLine("Бот запущен по webhook");
-Console.WriteLine("Webhook URL: " + webhookUrl);
-
-app.MapPost("/bot-webhook", async (Update update, TelegramBotClient botClient) =>
+app.MapPost("/bot-webhook", async (Update update, TelegramBotClient bot) =>
 {
-    if (update.Message != null)
-    {
-        var msg = update.Message;
+    if (update.Message == null || update.Message.Text == null)
+        return Results.Ok();
 
-        // ----- КНОПКИ -----
-        var buttons = new ReplyKeyboardMarkup(new[]
-        {
-            new KeyboardButton[] { "FAQ", "Поддержка", "Канал" }
-        })
+    var text = update.Message.Text;
+    long chatId = update.Message.Chat.Id;
+
+    // Клавиатура снизу
+    var bottomButtons = new ReplyKeyboardMarkup(new[]
+    {
+        new KeyboardButton[] { "FAQ" },
+        new KeyboardButton[] { "Поддержка" },
+        new KeyboardButton[] { "Канал" }
+    })
+    {
+        ResizeKeyboard = true
+    };
+
+    // При /start
+    if (text == "/start")
+    {
+        var startKeyboard = new ReplyKeyboardMarkup(
+            KeyboardButton.WithWebApp(
+                "Открыть приложение",
+                new WebAppInfo
+                {
+                    Url = "https://titwolf.github.io/fit-app/"
+                })
+        )
         {
             ResizeKeyboard = true
         };
 
-        if (msg.Text == "/start")
-        {
-            await botClient.SendTextMessageAsync(
-                chatId: msg.Chat.Id,
-                text: "Добро пожаловать!",
-                replyMarkup: buttons
-            );
-            return;
-        }
+        await bot.SendTextMessageAsync(chatId,
+            "Добро пожаловать! Нажмите кнопку, чтобы открыть приложение.",
+            replyMarkup: startKeyboard);
 
-        if (msg.Text == "FAQ")
-        {
-            await botClient.SendTextMessageAsync(
-                msg.Chat.Id,
-                "FitPlan — приложение для создания и ведения тренировок.\nВы можете создавать собственные тренировки, отслеживать прогресс и сохранять историю."
-            );
-            return;
-        }
+        await bot.SendTextMessageAsync(chatId,
+            "Выберите действие:",
+            replyMarkup: bottomButtons);
 
-        if (msg.Text == "Поддержка")
-        {
-            await botClient.SendTextMessageAsync(msg.Chat.Id, "Чат поддержки: @fapSupport");
-            return;
-        }
-
-        if (msg.Text == "Канал")
-        {
-            await botClient.SendTextMessageAsync(msg.Chat.Id, "Канал новостей: https://t.me/fitappplan");
-            return;
-        }
+        return Results.Ok();
     }
+
+    // Обработка кнопок
+    switch (text.ToLower())
+    {
+        case "faq":
+            await bot.SendTextMessageAsync(chatId,
+                "FitPlan — приложение для составления и отслеживания тренировок.");
+            break;
+
+        case "поддержка":
+            await bot.SendTextMessageAsync(chatId, "Чат поддержки: @fapSupport");
+            break;
+
+        case "канал":
+            await bot.SendTextMessageAsync(chatId, "Канал: https://t.me/fitappplan");
+            break;
+    }
+
+    return Results.Ok();
 });
+
+// Просто проверка запуска
+app.MapGet("/", () => "Bot is running.");
 
 app.Run();
