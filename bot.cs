@@ -1,47 +1,85 @@
 #nullable enable
 using System;
-using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Telegram.Bot;
-using Telegram.Bot.Exceptions;
-using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 
-class Program
+var builder = WebApplication.CreateBuilder(args);
+
+// Получаем токен из переменной окружения
+string? token = Environment.GetEnvironmentVariable("BOT_TOKEN");
+if (string.IsNullOrEmpty(token))
 {
-    private static TelegramBotClient? bot;
+    Console.WriteLine("BOT_TOKEN не найден");
+    return;
+}
 
-    static async Task Main()
+var bot = new TelegramBotClient(token);
+
+builder.Services.AddSingleton(bot);
+builder.Services.AddControllers().AddNewtonsoftJson();
+
+var app = builder.Build();
+
+string webhookUrl = $"{Environment.GetEnvironmentVariable("RENDER_EXTERNAL_URL")}/bot-webhook";
+
+await bot.DeleteWebhookAsync();
+await bot.SetWebhookAsync(webhookUrl);
+
+Console.WriteLine("Бот запущен по webhook");
+Console.WriteLine("Webhook URL: " + webhookUrl);
+
+app.MapPost("/bot-webhook", async (Update update, TelegramBotClient botClient) =>
+{
+    if (update.Message != null)
     {
-        string? token = Environment.GetEnvironmentVariable("BOT_TOKEN");
+        var msg = update.Message;
 
-        if (string.IsNullOrEmpty(token))
+        // ----- КНОПКИ -----
+        var buttons = new ReplyKeyboardMarkup(new[]
         {
-            Console.WriteLine("Ошибка: переменная окружения BOT_TOKEN не найдена.");
+            new KeyboardButton[] { "FAQ", "Поддержка", "Канал" }
+        })
+        {
+            ResizeKeyboard = true
+        };
+
+        if (msg.Text == "/start")
+        {
+            await botClient.SendTextMessageAsync(
+                chatId: msg.Chat.Id,
+                text: "Добро пожаловать!",
+                replyMarkup: buttons
+            );
             return;
         }
 
-        bot = new TelegramBotClient(token);
+        if (msg.Text == "FAQ")
+        {
+            await botClient.SendTextMessageAsync(
+                msg.Chat.Id,
+                "FitPlan — приложение для создания и ведения тренировок.\nВы можете создавать собственные тренировки, отслеживать прогресс и сохранять историю."
+            );
+            return;
+        }
 
-        Console.WriteLine("Запуск long polling...");
-        var me = await bot.GetMeAsync();
-        Console.WriteLine($"Бот запущен: @{me.Username}");
+        if (msg.Text == "Поддержка")
+        {
+            await botClient.SendTextMessageAsync(msg.Chat.Id, "Чат поддержки: @fapSupport");
+            return;
+        }
 
-        bot.StartReceiving(UpdateHandler, ErrorHandler);
-
-        await Task.Delay(-1);
+        if (msg.Text == "Канал")
+        {
+            await botClient.SendTextMessageAsync(msg.Chat.Id, "Канал новостей: https://t.me/fitappplan");
+            return;
+        }
     }
+});
 
-    private static async Task UpdateHandler(ITelegramBotClient client, Update update, CancellationToken ct)
-    {
-        // …остальной код без изменений
-    }
-
-    private static Task ErrorHandler(ITelegramBotClient client, Exception ex, CancellationToken ct)
-    {
-        Console.WriteLine("Ошибка: " + ex.Message);
-        return Task.CompletedTask;
-    }
-}
+app.Run();

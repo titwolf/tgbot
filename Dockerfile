@@ -1,23 +1,9 @@
-# 1. Сборка приложения
 FROM mcr.microsoft.com/dotnet/sdk:7.0 AS build
 WORKDIR /src
+COPY . .
+RUN dotnet publish -c Release -o /app
 
-# Копируем csproj и восстанавливаем зависимости
-COPY *.csproj ./
-RUN dotnet restore
-
-# Копируем весь проект и публикуем в папку /app
-COPY . ./
-RUN dotnet publish -c Release -o /app --self-contained true -r linux-x64
-
-# 2. Минимальный runtime
-FROM debian:12-slim AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:7.0
 WORKDIR /app
-
-COPY --from=build /app ./
-
-RUN apt-get update && \
-    apt-get install -y libicu72 libssl3 libgdiplus && \
-    rm -rf /var/lib/apt/lists/*
-
-CMD ["./BotProject"]
+COPY --from=build /app .
+CMD ["dotnet", "BotProject.dll"]
