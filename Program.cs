@@ -1,38 +1,37 @@
-#nullable enable
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
-using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Подключаем TelegramBotClient через DI
 builder.Services.AddSingleton(new TelegramBotClient(
-    Environment.GetEnvironmentVariable("BOT_TOKEN") ?? throw new Exception("BOT_TOKEN не задан")));
+    Environment.GetEnvironmentVariable("BOT_TOKEN") ?? ""
+));
 
-// Создаём приложение
 var app = builder.Build();
 
-// Эндпоинт для webhook
+// Webhook endpoint
 app.MapPost("/bot-webhook", async (HttpRequest request, TelegramBotClient bot) =>
 {
     Update? update;
     try
     {
         update = await JsonSerializer.DeserializeAsync<Update>(request.Body);
-        if (update == null || update.Message == null || update.Message.Text == null)
+        if (update?.Message?.Text == null)
             return Results.Ok();
     }
     catch
     {
-        return Results.Ok();
+        return Results.Ok(); // Любой некорректный JSON игнорируем
     }
 
     var chatId = update.Message.Chat.Id;
-    var text = update.Message.Text;
+    var text = update.Message.Text.ToLower();
 
     var keyboard = new ReplyKeyboardMarkup(new[]
     {
@@ -44,7 +43,7 @@ app.MapPost("/bot-webhook", async (HttpRequest request, TelegramBotClient bot) =
         ResizeKeyboard = true
     };
 
-    switch (text.ToLower())
+    switch (text)
     {
         case "/start":
             await bot.SendTextMessageAsync(chatId, "Добро пожаловать! Выберите команду:", replyMarkup: keyboard);
@@ -63,9 +62,7 @@ app.MapPost("/bot-webhook", async (HttpRequest request, TelegramBotClient bot) =
     return Results.Ok();
 });
 
-
-// Проверка работы сервиса
+// Простой тестовый endpoint
 app.MapGet("/", () => "Bot is running.");
 
-// Запуск сервера
 app.Run();

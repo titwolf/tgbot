@@ -1,4 +1,4 @@
-# build
+# 1. Сборка
 FROM mcr.microsoft.com/dotnet/sdk:7.0 AS build
 WORKDIR /src
 
@@ -8,13 +8,14 @@ RUN dotnet restore
 COPY . ./
 RUN dotnet publish -c Release -o /app
 
-# runtime
+# 2. Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:7.0
 WORKDIR /app
 
-COPY --from=build /app .
+COPY --from=build /app ./
 
-ENV ASPNETCORE_URLS=http://+:80
-EXPOSE 80
+# Render слушает 0.0.0.0:10000, поэтому указываем порт через переменную
+ENV ASPNETCORE_URLS=http://+:10000
+EXPOSE 10000
 
 ENTRYPOINT ["dotnet", "BotProject.dll"]
