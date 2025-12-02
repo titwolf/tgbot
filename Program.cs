@@ -1,54 +1,74 @@
 #nullable enable
-using System;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Telegram.Bot;
+using Telegram.Bot.Types;
+using Telegram.Bot.Types.ReplyMarkups;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Логирование
-builder.Logging.ClearProviders();
-builder.Logging.AddConsole();
-
-// Telegram client (берёт токен из переменных окружения)
-string botToken = Environment.GetEnvironmentVariable("BOT_TOKEN") ?? "";
-if (string.IsNullOrWhiteSpace(botToken))
-{
-    Console.WriteLine("Ошибка: переменная окружения BOT_TOKEN не задана. Установите токен в настройках Render.");
-}
-
-// Регистрируем TelegramBotClient и BotService
-builder.Services.AddSingleton<ITelegramBotClient>(sp => new TelegramBotClient(botToken));
-builder.Services.AddSingleton<BotService>();
-
-// Контроллеры + JSON options для корректной десериализации Update
-builder.Services.AddControllers().AddJsonOptions(options =>
-{
-    options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
-});
+// Бот из переменной окружения
+var token = Environment.GetEnvironmentVariable("BOT_TOKEN");
+builder.Services.AddSingleton(new TelegramBotClient(token!));
 
 var app = builder.Build();
 
-// Инициализация webhook (после DI построения)
-var logger = app.Services.GetRequiredService<ILogger<Program>>();
-var botService = app.Services.GetRequiredService<BotService>();
-try
+// Webhook endpoint
+app.MapPost("/bot-webhook", async (Update update, TelegramBotClient bot) =>
 {
-    await botService.InitializeAsync();
-    logger.LogInformation("BotService initialized.");
-}
-catch (Exception ex)
-{
-    logger.LogError(ex, "Ошибка при инициализации BotService.");
-}
+    if (update.Message == null || update.Message.Text == null)
+        return Results.Ok();
 
-// Map controllers
-app.MapControllers();
+    var text = update.Message.Text.Trim().ToLower();
+    var chatId = update.Message.Chat.Id;
 
-// Простая проверка работоспособности
-app.MapGet("/", () => "Bot service is running.");
+    // нижние кнопки
+    var keyboard = new ReplyKeyboardMarkup(new[]
+    {
+        new KeyboardButton[] { "faq" },
+        new KeyboardButton[] { "support" },
+        new KeyboardButton[] { "channel" }
+    })
+    {
+        ResizeKeyboard = true
+    };
 
-// Запуск
+    if (text == "/start")
+    {
+        await bot.SendTextMessageAsync(chatId,
+            "Добро пожаловать! Выберите команду:",
+            replyMarkup: keyboard);
+
+        return Results.Ok();
+    }
+
+    switch (text)
+    {
+        case "faq":
+        case "/faq":
+            await bot.SendTextMessageAsync(chatId,
+                "FAQ: это тренировочное приложение FitPlan.");
+            break;
+
+        case "support":
+        case "/support":
+            await bot.SendTextMessageAsync(chatId,
+                "Поддержка: @fapSupport");
+            break;
+
+        case "channel":
+        case "/channel":
+            await bot.SendTextMessageAsync(chatId,
+                "Наш канал: https://t.me/fitappplan");
+            break;
+    }
+
+    return Results.Ok();
+});
+
+// Проверка
+app.MapGet("/", () => "Bot is running!");
+
 app.Run();
