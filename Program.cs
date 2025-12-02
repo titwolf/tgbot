@@ -17,31 +17,40 @@ builder.Services.AddSingleton(new TelegramBotClient(
 var app = builder.Build();
 
 // Эндпоинт для webhook
-app.MapPost("/bot-webhook", async ([FromBody] Update update, [FromServices] TelegramBotClient bot) =>
+app.MapPost("/bot-webhook", async (HttpRequest request, TelegramBotClient bot) =>
 {
-    if (update.Message == null || update.Message.Text == null)
+    Update? update;
+    try
+    {
+        update = await JsonSerializer.DeserializeAsync<Update>(request.Body);
+        if (update == null || update.Message == null || update.Message.Text == null)
+            return Results.Ok();
+    }
+    catch
+    {
         return Results.Ok();
+    }
 
     var chatId = update.Message.Chat.Id;
     var text = update.Message.Text;
 
-    // Кнопки снизу
-    var buttons = new ReplyKeyboardMarkup(new[]
+    var keyboard = new ReplyKeyboardMarkup(new[]
     {
-        new KeyboardButton[] { "/faq", "/support", "/channel" }
+        new KeyboardButton[] { "/faq" },
+        new KeyboardButton[] { "/support" },
+        new KeyboardButton[] { "/channel" }
     })
-    { ResizeKeyboard = true };
-
-    if (text == "/start")
     {
-        await bot.SendTextMessageAsync(chatId, "Добро пожаловать! Выберите команду:", replyMarkup: buttons);
-        return Results.Ok();
-    }
+        ResizeKeyboard = true
+    };
 
     switch (text.ToLower())
     {
+        case "/start":
+            await bot.SendTextMessageAsync(chatId, "Добро пожаловать! Выберите команду:", replyMarkup: keyboard);
+            break;
         case "/faq":
-            await bot.SendTextMessageAsync(chatId, "FitAppPlan — приложение для составления и отслеживания тренировок.");
+            await bot.SendTextMessageAsync(chatId, "FitPlan — приложение для составления и отслеживания тренировок.");
             break;
         case "/support":
             await bot.SendTextMessageAsync(chatId, "Чат поддержки: @fapSupport");
@@ -49,13 +58,11 @@ app.MapPost("/bot-webhook", async ([FromBody] Update update, [FromServices] Tele
         case "/channel":
             await bot.SendTextMessageAsync(chatId, "Канал: https://t.me/fitappplan");
             break;
-        default:
-            await bot.SendTextMessageAsync(chatId, "Неизвестная команда. Используйте кнопки ниже.", replyMarkup: buttons);
-            break;
     }
 
     return Results.Ok();
 });
+
 
 // Проверка работы сервиса
 app.MapGet("/", () => "Bot is running.");
