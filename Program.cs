@@ -8,27 +8,37 @@ using Telegram.Bot.Types.ReplyMarkups;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Получаем токен из переменной окружения
-string? token = Environment.GetEnvironmentVariable("BOT_TOKEN");
+// токен из переменной среды
+var token = Environment.GetEnvironmentVariable("BOT_TOKEN");
+var webhookUrl = Environment.GetEnvironmentVariable("WEBHOOK_URL");
 
-if (string.IsNullOrWhiteSpace(token))
-    throw new Exception("BOT_TOKEN не найден!");
+if (string.IsNullOrEmpty(token))
+    throw new Exception("BOT_TOKEN is not set");
 
-// Регистрируем TelegramBotClient
-builder.Services.AddSingleton(new TelegramBotClient(token));
+if (string.IsNullOrEmpty(webhookUrl))
+    throw new Exception("WEBHOOK_URL is not set");
+
+// создаем клиента
+var bot = new TelegramBotClient(token);
+
+// включаем webhook
+await bot.SetWebhookAsync(webhookUrl);
 
 var app = builder.Build();
 
-// Webhook endpoint
-app.MapPost("/bot-webhook", async (Update update, TelegramBotClient bot) =>
+// корень сайта
+app.MapGet("/", () => "Bot is running");
+
+// обработчик webhook
+app.MapPost("/bot-webhook", async (Update update) =>
 {
-    if (update.Message?.Text == null)
-        return Results.Ok();
+    if (update.Message == null || update.Message.Text == null)
+        return;
 
     long chatId = update.Message.Chat.Id;
-    string text = update.Message.Text.ToLower();
+    string text = update.Message.Text.Trim().ToLower();
 
-    var keyboard = new ReplyKeyboardMarkup(new[]
+    var buttons = new ReplyKeyboardMarkup(new[]
     {
         new KeyboardButton[] { "/faq" },
         new KeyboardButton[] { "/support" },
@@ -38,17 +48,18 @@ app.MapPost("/bot-webhook", async (Update update, TelegramBotClient bot) =>
         ResizeKeyboard = true
     };
 
+    if (text == "/start")
+    {
+        await bot.SendTextMessageAsync(chatId,
+            "Привет! Выбери действие:", replyMarkup: buttons);
+        return;
+    }
+
     switch (text)
     {
-        case "/start":
-            await bot.SendTextMessageAsync(chatId,
-                "Бот работает! Выберите команду:",
-                replyMarkup: keyboard);
-            break;
-
         case "/faq":
             await bot.SendTextMessageAsync(chatId,
-                "FAQ: Это простой бот, который отвечает на команды.");
+                "FAQ: FitPlan — приложение для тренировок.");
             break;
 
         case "/support":
@@ -61,11 +72,6 @@ app.MapPost("/bot-webhook", async (Update update, TelegramBotClient bot) =>
                 "Канал: https://t.me/fitappplan");
             break;
     }
-
-    return Results.Ok();
 });
-
-// Проверка сервера
-app.MapGet("/", () => "Bot is running");
 
 app.Run();
